@@ -1,5 +1,7 @@
 import axiosClient from './base';
 
+const USER_ID = '1';
+
 if (!localStorage.getItem('SPOTIFY_TOKEN')) {
   localStorage.setItem('SPOTIFY_TOKEN', '');
 }
@@ -39,12 +41,49 @@ export const searchMusicApi = async search => {
 };
 
 export const getSongByIds = async ids => {
-  const res = await axiosClient.get(`/`, {
-    params: { ids },
-    baseURL: 'https://spotify23.p.rapidapi.com/tracks',
+  const payload = ids.join(',');
+
+  const res = await axiosClient.get(`tracks`, {
+    params: {
+      ids: payload,
+    },
+    baseURL: 'https://api.spotify.com/v1/',
     headers: {
-      'x-rapidapi-key': '0316ee89c8msh00029a671e9cd4dp1a0b4ejsn203e09d97084',
-      'x-rapidapi-host': 'spotify23.p.rapidapi.com',
+      Authorization: `Bearer ${SPOTIFY_TOKEN}`,
+    },
+  });
+  return res.data;
+};
+
+export const deleteSongRecord = async id => {
+  await axiosClient.delete(`/music/${id}`);
+};
+
+export const addVotting = async id => {
+  await axiosClient.patch(
+    `/music/votting`,
+    { refId: id },
+    {
+      headers: {
+        userId: USER_ID,
+      },
+    },
+  );
+};
+
+export const addSongRecord = async payload => {
+  const res = await axiosClient.post('/music', payload, {
+    headers: {
+      userId: USER_ID,
+    },
+  });
+  return res.data;
+};
+
+export const getListUserSongs = async () => {
+  const res = await axiosClient.get('/music', {
+    headers: {
+      userId: USER_ID,
     },
   });
   return res.data;

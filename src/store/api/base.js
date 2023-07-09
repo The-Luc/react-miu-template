@@ -1,7 +1,7 @@
 /* eslint-disable no-underscore-dangle */
 import Axios from 'axios';
 
-const baseURL = 'http://10.84.0.185:90';
+const baseURL = 'http://10.84.0.185:90/api';
 
 const axiosClient = Axios.create({
   baseURL,

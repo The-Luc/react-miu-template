@@ -5,14 +5,21 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { debounce } from 'lodash';
-import { useEffect, useState } from 'react';
-import { searchMusicApi } from '../../store/api';
+import { useEffect, useState, useRef } from 'react';
+import {
+  addSongRecord,
+  searchMusicApi,
+  getListUserSongs as getListUserSongsApi,
+  getSongByIds,
+  deleteSongRecord,
+  addVotting,
+} from '../../store/api';
 import { ListSongs } from './ListSongs';
-import { Player } from './Player';
 import { Button } from '@mui/material';
 import SpotifyWebPlayer from 'react-spotify-web-playback';
 import { SPOTIFY_TOKEN } from '../../store/api';
 import StyledTextArea from '../../components/StyledTextArea';
+import { mapSongs } from './util';
 
 const defaultTheme = createTheme();
 
@@ -21,12 +28,42 @@ export default function DiroxRadar() {
   // const [isLoading, setIsLoading] = useState(false);
   const [isRequesting, setIsRequesting] = useState(false);
   const [selectedSong, setSelectedSong] = useState(null);
+  const [userSongs, setUserSongs] = useState([]);
+  let message = '';
+
+  const getListUserSongs = async () => {
+    const userSongs = await getListUserSongsApi();
+    const dbSongs = await getSongByIds(userSongs.map(song => song.refId));
+
+    // attach id to each song
+    dbSongs.tracks.forEach((song, index) => {
+      if (!song) return;
+      song.dbId = userSongs[index].id;
+      song.message = userSongs[index].messages.map((m, idx) => {
+        if (!m.msg) return;
+
+        return (
+          <div key={idx} style={{ fontSize: '1rem', paddingBottom: '5px' }}>
+            <b>{m.fullName}</b>: {m.msg}
+          </div>
+        );
+      });
+
+      song.vote = userSongs[index].count;
+      song.isMyVote = userSongs[index].isMyVote;
+    });
+
+    const removeNull = dbSongs.tracks.filter(Boolean);
+    const savedSongs = mapSongs(removeNull);
+    setUserSongs(savedSongs);
+  };
 
   useEffect(() => {
     // get list song ids from api
+    getListUserSongs();
   }, []);
 
-  const onAdd = () => {
+  const onAdd = async () => {
     if (!isRequesting) {
       setIsRequesting(true);
       return;
@@ -34,6 +71,8 @@ export default function DiroxRadar() {
 
     // call api to add song to playlist
     setIsRequesting(false);
+    await addSongRecord({ userId: 1, RefId: selectedSong.id, message });
+    await getListUserSongs();
   };
 
   const handleGetSongs = debounce(async event => {
@@ -47,31 +86,25 @@ export default function DiroxRadar() {
 
     const songs = res.tracks.items;
 
-    const saveSongs = songs.map(song => {
-      return {
-        id: song.id,
-        name: song.name,
-        img: song.preview_url,
-        href: song.href,
-        uri: song.uri,
-      };
-    });
+    const saveSongs = mapSongs(songs);
 
     setListSongs(saveSongs);
   }, 500);
 
-  const onSelect = song => {
+  const onSelect = async song => {
     setSelectedSong(song);
     setListSongs([]);
   };
 
-  const playerStyle = isRequesting
-    ? { hideCoverArt: true, hideAttribute: true }
-    : {};
-  console.log(
-    '🚀 ~ file: Music.jsx:68 ~ DiroxRadar ~ playerStyle:',
-    playerStyle,
-  );
+  const onDeleteSong = async song => {
+    await deleteSongRecord(song.dbId);
+    await getListUserSongs();
+  };
+
+  const handleVote = async song => {
+    await addVotting(song.id);
+    await getListUserSongs();
+  };
 
   return (
     <ThemeProvider theme={defaultTheme}>
@@ -90,6 +123,7 @@ export default function DiroxRadar() {
               flexDirection: 'column',
               alignItems: 'center',
             }}
+            position="relative"
           >
             <Typography component="h2" variant="h5">
               Dirox Radio
@@ -109,9 +143,19 @@ export default function DiroxRadar() {
                 onChange={handleGetSongs}
               />
             </Box>
-            <Box>
-              <ListSongs songs={listSongs} onSelect={onSelect} />
-            </Box>
+            {listSongs?.length > 0 && (
+              <Paper
+                sx={{
+                  position: 'absolute',
+                  top: 120,
+                  backgroundColor: 'white',
+                  zIndex: 1000,
+                  width: '450px',
+                }}
+              >
+                <ListSongs songs={listSongs} onSelect={onSelect} />
+              </Paper>
+            )}
             <Box
               width="100%"
               sx={{
@@ -125,10 +169,12 @@ export default function DiroxRadar() {
                   variant="outlined"
                   color="primary"
                   sx={{ width: '80%' }}
+                  onChange={e => (message = e.target.value)}
                 />
               )}
               {selectedSong && (
                 <SpotifyWebPlayer
+                  key={selectedSong.id}
                   token={SPOTIFY_TOKEN}
                   uris={[selectedSong.uri]}
                   hideCoverArt={isRequesting}
@@ -155,6 +201,18 @@ export default function DiroxRadar() {
                   </Button>
                 </>
               )}
+            </Box>
+
+            {/* LIST USER SONGS */}
+            <Box sx={{ mt: 3, width: '400px' }}>
+              <ListSongs
+                songs={userSongs}
+                onSelect={onSelect}
+                isDelete
+                isVote
+                onDelete={onDeleteSong}
+                onVote={handleVote}
+              />
             </Box>
           </Box>
         </Paper>
